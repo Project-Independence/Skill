@@ -8,6 +8,7 @@
   },
   "author": "",
   "license": "ISC",
+  "dependencies": {
     "alexa-sdk": "^1.0.17"
   }
 }
