@@ -24,17 +24,20 @@ var handlers = {
     'LaunchRequest': function () {
         this.emit(':ask', 'Hi! Welcome to Project Independence. Ask me to store the time!');
     },
-    'TimeIntent': function () {
+    'LogIntent': function () {
+        var inputTime = this.event.request.intent.slots.DateSlot.value;
+        var inputContents = this.event.request.intent.slots.ContentsSlot.value;
+
         var params = {
             Item: {
-                name: 'Time',
-                data: new Date().toString()
+                name: inputTime,
+                data: inputContents
             },
             TableName: 'CignaDB'
         }
         var _this = this;
         docClient.put(params, function (err, data) {
-            _this.emit(':ask', 'I put the current time into the database!', 'Done!');
+            _this.emit(':ask', 'I put ' + inputContents + ' into the database for ' + inputTime + '!');
             if (err) {
                 console.log(err);
             } else if (data) {
