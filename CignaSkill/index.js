@@ -26,10 +26,24 @@ const initialHandlers = {
     'LaunchRequest': function () {
         this.emit(':ask', 'Hi!');
     },
+    'SendMessage': function () {
+        var message = this.event.request.intent.slots.message.value;
+        if (!message) {
+            const slotToElicit = 'message';
+            const speechOutput = 'what message do you want to send?';
+            const repromptSpeech = 'what do you want to say?';
+            const updatedIntent = 'SendMessage';
+            return this.emit(':elicitSlot', slotToElicit, speechOutput, repromptSpeech);
+        } else {
+            this.response.speak('Sending ' + message);
+            this.emit(':responseReady');
+            this.response.cardRenderer('Sending...', message);
+        }
+    },
     'ShowShoppingList': function () {
         var _this = this;
         var responseString = '';
-        var searchTest = this.event.request.intent.slots.literal.value;
+        // var searchTest = this.event.request.intent.slots.literal.value;
         getShoppingList(function (err, data) {
             data.forEach(function (item) {
                 responseString = responseString.concat(
@@ -39,55 +53,63 @@ const initialHandlers = {
                     item.item,
                     '\n');
             });
-            //            _this.response.cardRenderer('Shopping List', responseString);
-            //            _this.response.speak("here is your shopping list");
-            let date = chrono.parseDate(searchTest);
-            let response = date ? date : 'there was no date';
-            _this.response.cardRenderer('What you said', response);
+            _this.response.cardRenderer('Shopping List:', responseString);
+            _this.response.speak("here is your shopping list");
+            let response = 'Here is your shopping list';
+            _this.response.cardRenderer('Shopping List:', responseString);
+            //            let date = chrono.parseDate(searchTest);
+            //            let response = date ? date : 'there was no date';
+            //            _this.response.cardRenderer('What you said', response);
             _this.response.speak(response);
             _this.emit(':responseReady');
         });
     },
     'RequestRide': function () {
-        recordChange();
-        var event = this.event.request.intent.slots.event.value;
-        var date = this.event.request.intent.slots.date.value;
-        var time = this.event.request.intent.slots.time.value;
-        var _this = this;
-        if (!event) {
-            const slotToElicit = 'event'
-            const speechOutput = 'Where to?'
-            const repromptSpeech = 'Where are you going?'
-            const updatedIntent = 'RequestRide'
-            return this.emit(':elicitSlot', slotToElicit, speechOutput, repromptSpeech)
-        } else if (!date) {
-            const slotToElicit = 'date'
-            const speechOutput = 'What day?'
-            const repromptSpeech = 'Please day me a time to be picked up'
-            const updatedIntent = 'RequestRide'
-            return this.emit(':elicitSlot', slotToElicit, speechOutput, repromptSpeech)
-        } else if (!time) {
-            const slotToElicit = 'time'
-            const speechOutput = 'What time would you like to be picked up?'
-            const repromptSpeech = 'Please tell me a time to be picked up'
-            const updatedIntent = 'RequestRide'
-            return this.emit(':elicitSlot', slotToElicit, speechOutput, repromptSpeech)
-        } else {
-            addRideRequest(event, date, time, function (err, data) {
-                if (!err) {
-                    const subject = "A Ride Was Requested";
-                    const body = "A ride was requested for '" + event + "' on: " + date + " at " + time + ". You can claim it from the Caretaker Portal.";
-                    //sendEmail(subject, body);
-
-                    var outputSpeech = 'Signa requested a ride for ' + event + ' ' + date + ' at ' + time;
-                    var outputText = 'Cigna requested a ride for "' + event + '" ' + date + ' at ' + time + '.';
-                    _this.response.cardRenderer("Response", outputText);
-                    _this.response.speak(outputSpeech);
-                    _this.emit(':responseReady');
-                } else {
-                    _this.emit(':tell', 'There was a problem');
+        // recordChange();    
+        var speechText = this.event.request.intent.slots.event.value;
+        if (speechText) {
+            let date = chrono.parseDate(speechText);
+            if (removeDate(speechText) != '') {
+                this.attributes['event_slot'] = removeDate(speechText);
+            }
+            if (chrono.parseDate(speechText)) {
+                if (this.attributes['date_slot'] == 'N/A') {
+                    this.attributes['date_slot'] = chrono.parseDate(speechText).getDate();
                 }
-            });
+                if (this.attributes['time_slot'] == 'N/A') {
+                    let _this = this;
+                    chrono.parse(speechText).forEach(function (result) {
+                        if (result.tags.ENTimeExpressionParser) {
+                            _this.attributes['time_slot'] = date.getHours() + ':' + date.getMinutes();
+                        }
+                    });
+                }
+            }
+        }
+        if (this.attributes['event_slot'] == 'N/A') {
+            const slotToElicit = 'event';
+            const speechOutput = 'where to?';
+            const repromptSpeech = 'whats the ride for?';
+            const updatedIntent = 'RequestRide';
+            return this.emit(':elicitSlot', slotToElicit, speechOutput, repromptSpeech);
+        } else if (this.attributes['date_slot'] == 'N/A') {
+            const slotToElicit = 'event';
+            const speechOutput = 'what day?';
+            const repromptSpeech = 'tell me a day';
+            const updatedIntent = 'RequestRide';
+            return this.emit(':elicitSlot', slotToElicit, speechOutput, repromptSpeech);
+        } else if (this.attributes['time_slot'] == 'N/A') {
+            const slotToElicit = 'event';
+            const speechOutput = 'what time would you like to be picked up?';
+            const repromptSpeech = 'what time?';
+            const updatedIntent = 'RequestRide';
+            return this.emit(':elicitSlot', slotToElicit, speechOutput, repromptSpeech);
+        } else {
+            this.response.speak(this.attributes['event_slot'] + ' ' + this.attributes['date_slot'] + ' at ' + this.attributes['time_slot']);
+            this.attributes['event_slot'] = 'N/A';
+            this.attributes['date_slot'] = 'N/A';
+            this.attributes['time_slot'] = 'N/A';
+            return this.emit(':responseReady');
         }
     },
     'RequestErrand': function () {
@@ -174,6 +196,17 @@ const initialHandlers = {
         response.tell(speechOutput);
     }
 };
+
+function removeDate(string) {
+    let parsedResult = chrono.parse(string);
+    parsedResult.forEach(function (result) {
+        string = string.replace('on ' + result.text, '');
+        string = string.replace('at ' + result.text, '');
+        string = string.replace('for ' + result.text, '');
+        string = string.replace(result.text, '');
+    });
+    return string;
+}
 
 function addShoppingItem(item, quantity, callbackFn) {
 
