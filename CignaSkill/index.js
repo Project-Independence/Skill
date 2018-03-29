@@ -10,6 +10,8 @@ const states = {
     PROMPT: '_PROMPT'
 };
 
+const names = ['Lucas', 'Hamza', 'Jd', 'Bing'];
+
 // if thing is in list, add to quantity
 // make removing
 
@@ -64,23 +66,57 @@ const initialHandlers = {
             _this.emit(':responseReady');
         });
     },
+    'GetEvents': function () {
+        let _this = this;
+        var speechText = this.event.request.intent.slots.date.value;
+        let date = chrono.parseDate(speechText).toLocaleDateString();
+        let responseText = '';
+        let showText = '';
+        getEvents(date, function (data) {
+            if (data.length > 0) {
+                responseText += 'You have ' + data.length + ' event' + (data.length == 1 ? '' : 's') + '. ';
+                data.forEach(function (event) {
+                    if (event.claimed == true) {
+                        let driver = names[event.ClientID];
+                        responseText += 'Lucas' + ' is giving you a ride to "' + event.event + '", ';
+                        showText += 'Name: ' + event.event +
+                            '\n' + 'Transportation: ' + 'Lucas' +
+                            '\n\n';
+                    } else {
+                        showText += 'Name: ' + event.event +
+                            '\n' + 'Transportation: Requested\n\n';
+                        responseText += 'you need a ride to "' + event.event + '", ';
+                    }
+                })
+                _this.response.speak(responseText);
+                _this.response.cardRenderer('Events on ' + date + ':', showText);
+                _this.emit(':responseReady');
+            } else {
+                _this.response.speak('You have no events ' + date);
+                _this.response.cardRenderer("Events on " + date, 'You have no events ' + date + '.');
+                _this.emit(':responseReady');
+            }
+        })
+    },
     'RequestRide': function () {
-        // recordChange();    
         var speechText = this.event.request.intent.slots.event.value;
         if (speechText) {
             let date = chrono.parseDate(speechText);
             if (removeDate(speechText) != '') {
-                this.attributes['event_slot'] = removeDate(speechText);
+                let event = removeDate(speechText);
+                event = event.replace('for ', '');
+                event = event.replace('to ', '');
+                this.attributes['event_slot'] = event;
             }
             if (chrono.parseDate(speechText)) {
                 if (this.attributes['date_slot'] == 'N/A') {
-                    this.attributes['date_slot'] = chrono.parseDate(speechText).getDate();
+                    this.attributes['date_slot'] = date.toLocaleDateString();
                 }
                 if (this.attributes['time_slot'] == 'N/A') {
                     let _this = this;
                     chrono.parse(speechText).forEach(function (result) {
                         if (result.tags.ENTimeExpressionParser) {
-                            _this.attributes['time_slot'] = date.getHours() + ':' + date.getMinutes();
+                            _this.attributes['time_slot'] = date.toLocaleTimeString();
                         }
                     });
                 }
@@ -105,37 +141,57 @@ const initialHandlers = {
             const updatedIntent = 'RequestRide';
             return this.emit(':elicitSlot', slotToElicit, speechOutput, repromptSpeech);
         } else {
-            this.response.speak(this.attributes['event_slot'] + ' ' + this.attributes['date_slot'] + ' at ' + this.attributes['time_slot']);
+            let event = this.attributes['event_slot'];
+            let date = this.attributes['date_slot'];
+            let time = this.attributes['time_slot'];
+
+            let rideText = event + ' ' + date + ' at ' + time;
+            this.response.speak('Requested a ride for ' + rideText);
+
+            let showText = 'Event: ' + event + '\nDate: ' + date + '\nPickup Time: ' + time;
+            // this.response.cardRenderer("Requested a ride: ", showText);
             this.attributes['event_slot'] = 'N/A';
             this.attributes['date_slot'] = 'N/A';
             this.attributes['time_slot'] = 'N/A';
-            return this.emit(':responseReady');
-        }
-    },
-    'RequestErrand': function () {
-        recordChange();
-        var errand = this.event.request.intent.slots.errand.value;
-        var _this = this;
-        if (!errand) {
-            const slotToElicit = 'errand'
-            const speechOutput = 'What errand?'
-            const repromptSpeech = 'What do you need?'
-            const updatedIntent = 'RequestErrand'
-            return this.emit(':elicitSlot', slotToElicit, speechOutput, repromptSpeech)
-        }
-        addErrand(errand, function (err, data) {
-            if (!err)
-                _this.emit(':tell', 'Signa added ' + errand + ' to your errands');
-            else
-                _this.emit(':tell', 'There was a problem');
 
-        });
+            let _this = this;
+            logRideRequest(event, date, time, function () {
+                return _this.emit(':responseReady');
+            });
+
+            var http = require('http');
+
+            var post_options = {
+                host: 'fcm.googleapis.com',
+                path: '/fcm/send',
+                method: 'POST',
+                'headers': {
+                    'Authorization': 'key=' + 'AAAAYwFKIfU:APA91bFzDV9FFpKuIYVm16e5hUsq1oSDJBMENmI1T93ISv1h-JR4YvpLUnyroYjP0zTuMJ11aU_fVtsKXgpXtF3KGv58X8FwSziSxfBSmgiSoyV9rTdtH4SadiPe0xOPF1ZMxAs_S4KX',
+                    'Content-Type': 'application/json'
+                },
+            }
+            var post_data = JSON.stringify({
+                'notification': {
+                    'title': 'New Request',
+                    'body': 'Barbara requested a ride to ' + event + ' on ' + date + ' at ' + time,
+                    'icon': 'https://2rggqq2i39ev11stft2k5mo0-wpengine.netdna-ssl.com/wp-content/uploads/cigna-square-logo-2-300x300.png',
+                    'click_action': 'http://localhost:8080'
+                },
+                'to': 'fI2-6s8gELk:APA91bG_Wdlgs20ffL50BHFTXIgtJcC5JBpR0Wy_R3x3p12Sv5RaVNr6HLogmYR-DLNIgsPr2VsHprRI4or-IZiaZGGp3ip4r8xO25r2ghRhL2SxgOjISFLgWGN5kvLsG-aVIRbWasSe'
+            })
+            // Set up the request
+            var post_req = http.request(post_options, function (res) {});
+
+            // post the data
+            post_req.write(post_data);
+            post_req.end();
+            recordChange();
+        }
     },
     'AddShoppingItem': function () {
         recordChange();
         var item = this.event.request.intent.slots.item.value;
         var quantity = this.event.request.intent.slots.quantity.value;
-
         if (item) {
             if (item.split(' ')[0] == 'for') {
                 item = item.replace('for ', '');
@@ -146,7 +202,6 @@ const initialHandlers = {
                 quantity = 1;
             }
         }
-
         if (!item) {
             const slotToElicit = 'item'
             const speechOutput = 'Can you repeat what you want to add?'
@@ -154,7 +209,6 @@ const initialHandlers = {
             const updatedIntent = 'AddShoppingItem'
             return this.emit(':elicitSlot', slotToElicit, speechOutput, repromptSpeech)
         }
-
         if (!quantity) {
             const slotToElicit = 'quantity'
             const speechOutput = 'How many?'
@@ -208,8 +262,23 @@ function removeDate(string) {
     return string;
 }
 
-function addShoppingItem(item, quantity, callbackFn) {
+function getEvents(date, callbackFn) {
+    let params = {
+        TableName: 'Rides'
+    };
+    let events = [];
+    docClient.scan(params, (err, data) => {
+        data.Items.forEach(function (event) {
+            console.log(event);
+            if (event.date == date) {
+                events.push(event);
+            }
+        });
+        callbackFn(events);
+    });
+}
 
+function addShoppingItem(item, quantity, callbackFn) {
     var params = {
         Key: {
             item: item
@@ -239,10 +308,10 @@ function clearShoppingList(callbackFn) {
 }
 
 
-function addRideRequest(event, date, time, callbackFn) {
+function logRideRequest(event, date, time, callbackFn) {
     var params = {
         Key: {
-            id: event + '_' + date
+            id: date + time
         },
         AttributeUpdates: {
             event: {
@@ -263,9 +332,6 @@ function addRideRequest(event, date, time, callbackFn) {
             }
         },
         TableName: 'Rides'
-    }
-    if (!time) {
-        params.AttributeUpdates.time.Value = 'N/A';
     }
     docClient.update(params, function (err, data) {
         if (typeof (callbackFn) == 'function') {
