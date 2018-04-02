@@ -43,28 +43,68 @@ const initialHandlers = {
         }
     },
     'ShowShoppingList': function () {
-        var _this = this;
-        var responseString = '';
-        // var searchTest = this.event.request.intent.slots.literal.value;
-        getShoppingList(function (err, data) {
-            data.forEach(function (item) {
-                responseString = responseString.concat(
-                    '- ',
-                    item.quantity,
-                    ' ',
-                    item.item,
-                    '\n');
-            });
-            _this.response.cardRenderer('Shopping List:', responseString);
-            _this.response.speak("here is your shopping list");
-            let response = 'Here is your shopping list';
-            _this.response.cardRenderer('Shopping List:', responseString);
-            //            let date = chrono.parseDate(searchTest);
-            //            let response = date ? date : 'there was no date';
-            //            _this.response.cardRenderer('What you said', response);
-            _this.response.speak(response);
-            _this.emit(':responseReady');
-        });
+        //        var _this = this;
+        //        var responseString = '';
+        //        // var searchTest = this.event.request.intent.slots.literal.value;
+        //        getShoppingList(function (err, data) {
+        //            data.forEach(function (item) {
+        //                responseString = responseString.concat(
+        //                    '- ',
+        //                    item.item,
+        //                    '\n');
+        //            });
+        //
+        //            _this.response.cardRenderer('Shopping List:', responseString);
+        //            _this.response.speak("here is your shopping list");
+        //            let response = 'Here is your shopping list';
+        //            _this.response.cardRenderer('Shopping List:', responseString);
+        //            _this.response.speak(response);
+        //            console.log(_this.response);
+
+
+        var response = {
+            "version": "1.0",
+            "response": {
+                "directives": [
+                    {
+                        "type": "Display.RenderTemplate",
+                        "template": {
+                            "type": "BodyTemplate1",
+                            "token": "string",
+                            "backButton": "VISIBLE",
+                            "title": "Title",
+                            "textContent": {
+                                "primaryText": {
+                                    "text": "See my favorite car",
+                                    "type": "PlainText"
+                                },
+                                "secondaryText": {
+                                    "text": "Custom-painted",
+                                    "type": "RichText"
+                                },
+                                "tertiaryText": {
+                                    "text": "By me!",
+                                    "type": "PlainText"
+                                }
+                            }
+                        }
+                    }],
+                "outputSpeech": {
+                    "type": "SSML",
+                    "ssml": "<speak> Take your shopping list </speak>"
+                },
+                "shouldEndSession": true
+            },
+            "sessionAttributes": {
+                "date_slot": "N/A",
+                "event_slot": "N/A",
+                "time_slot": "N/A"
+            }
+        }
+        console.log(this.response.ResponseBuilder);
+        this.context.succeed(response);
+        //            _this.emit(':responseReady');
+        //        });
     },
     'GetEvents': function () {
         let _this = this;
@@ -214,15 +254,15 @@ const initialHandlers = {
             const speechOutput = 'How many?'
             const repromptSpeech = 'How many?'
             const updatedIntent = 'AddShoppingItem'
-            return this.emit(':elicitSlot', slotToElicit, speechOutput, repromptSpeech)
+            //  return this.emit(':elicitSlot', slotToElicit, speechOutput, repromptSpeech)
         }
 
         if (!quantity) quantity = 1;
         var _this = this;
         addShoppingItem(item, quantity, function (err, data) {
             if (!err) {
-                let outputSpeech = 'Signa added ' + quantity + ' ' + item + ' to your shopping list.';
-                let outputText = 'Cigna added ' + quantity + ' ' + item + ' to your shopping list.';
+                let outputSpeech = 'I added ' + item + ' to your shopping list.';
+                let outputText = 'I added ' + item + ' to your shopping list.';
                 _this.response.cardRenderer("Response", outputText);
                 _this.response.speak(outputSpeech);
                 _this.emit(':responseReady');
@@ -425,115 +465,3 @@ function getShoppingList(callbackFn) {
         }
     });
 }
-
-//const initialHandlers = {
-//    'AMAZON.SearchAction<object@WeatherForecast>': function () {
-//        this.emit(':ask', 'No idea. Probably cold.')
-//    },
-//    'LaunchRequest': function () {
-//        this.emit(':ask', 'Hi! Welcome to Project Independence. Ask mef to store the time!');
-//    },
-//    'calenderIntent': function () {
-//        var inputTime = this.event.request.intent.slots.date.value;
-//        var inputContents = this.event.request.intent.slots.event.value;
-//        var id = inputTime + ' ' + inputContents;
-//
-//        var _this = this;
-//        storeData('currentEvent', id, function () {
-//            dbPut('Events', id, 'desc', inputContents, function (err, data) {
-//                dbPut('Events', id, 'time', inputTime, function (err, data) {
-//                    if (!err) {
-//                        _this.emit(':ask', 'I put ' + inputContents + ' into your calender ' + inputTime + '! Will you need a ride?');
-//                    } else {
-//                        _this.emit(':ask', 'There was an issue connecting to the cloud');
-//                    }
-//                });
-//            });
-//            _this.handler.state = states.PROMPT;
-//        });
-//    },
-//    'UnclearIntent': function () {
-//        this.emit(':ask', 'I did not understand that.');
-//    },
-//    'Unhandled': function () {
-//        this.emit(':ask', 'I dont understand.');
-//    }
-//};
-//
-//const rideHandlers = Alexa.CreateStateHandler(states.PROMPT, {
-//    'YesRideIntent': function (session) {
-//        var _this = this;
-//        getData(function (data) {
-//            dbPut('Events', data.currentEvent, 'rideNeeded', 'yes', function () {
-//                dbPut('Events', data.currentEvent, 'driver', 'unassigned', function () {
-//                    _this.emit(':ask', 'Okay, I will let somebody know!');
-//                });
-//            });
-//        });
-//    },
-//    'NoRideIntent': function () {
-//        var _this = this;
-//        getData(function (data) {
-//            dbPut('Events', data.currentEvent, 'rideNeeded', 'no', function () {
-//                dbPut('Events', data.currentEvent, 'driver', 'N/A', function () {
-//                    _this.emit(':ask', 'Okay.');
-//                });
-//            });
-//        });
-//    },
-//    'Unhandled': function () {
-//        this.emit(':ask', 'I dont understand.');
-//    }
-//});
-//
-//function dbPut(table, id, key, contents, callbackFn) {
-//    var params = {
-//        Key: {
-//            id: id
-//        },
-//        AttributeUpdates: {},
-//        TableName: table
-//    };
-//    params.AttributeUpdates[key] = {
-//        Action: 'PUT',
-//        Value: contents
-//    }
-//    docClient.update(params, function (err, data) {
-//        if (typeof (callbackFn) == 'function') {
-//            console.log(err);
-//            callbackFn(err, data);
-//        }
-//    });
-//}
-//
-//function storeData(key, contents, callbackFn) {
-//    getData(function (data) {
-//        data[key] = contents;
-//        var params = {
-//            Item: {
-//                id: 'main',
-//                data: JSON.stringify(data)
-//            },
-//            TableName: 'SkillData'
-//        }
-//        docClient.put(params, function (err, data) {
-//            if (typeof (callbackFn) == 'function') {
-//                callbackFn(err, data);
-//            }
-//        });
-//    });
-//}
-//
-//function getData(callbackFn) {
-//    var params = {
-//        Key: {
-//            id: 'main'
-//        },
-//        TableName: 'SkillData'
-//    }
-//    docClient.get(params, function (err, data) {
-//        if (typeof (callbackFn) == 'function') {
-//            callbackFn(JSON.parse(data.Item.data));
-//        }
-//    });
-//}
