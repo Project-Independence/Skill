@@ -30,6 +30,7 @@ const initialHandlers = {
     },
     'SendMessage': function () {
         var message = this.event.request.intent.slots.message.value;
+        var _this = this;
         if (!message) {
             const slotToElicit = 'message';
             const speechOutput = 'what message do you want to send?';
@@ -37,74 +38,66 @@ const initialHandlers = {
             const updatedIntent = 'SendMessage';
             return this.emit(':elicitSlot', slotToElicit, speechOutput, repromptSpeech);
         } else {
-            this.response.speak('Sending ' + message);
-            this.emit(':responseReady');
-            this.response.cardRenderer('Sending...', message);
+            this.attributes['current_message'] = message;
+            displayCaretakers(this, 'Who would you like to send this to?');
+            //            message = message.charAt(0).toUpperCase() + message.slice(1);
+            //            sendNotification('New Message', message);
+            //
+            //            // delay to ensure notification sends (doesn't have callback)
+            //            setTimeout(function () {
+            //                displayMessage(_this, message);
+            //            }, 500);
         }
     },
-    'ShowShoppingList': function () {
-        //        var _this = this;
-        //        var responseString = '';
-        //        // var searchTest = this.event.request.intent.slots.literal.value;
-        //        getShoppingList(function (err, data) {
-        //            data.forEach(function (item) {
-        //                responseString = responseString.concat(
-        //                    '- ',
-        //                    item.item,
-        //                    '\n');
-        //            });
-        //
-        //            _this.response.cardRenderer('Shopping List:', responseString);
-        //            _this.response.speak("here is your shopping list");
-        //            let response = 'Here is your shopping list';
-        //            _this.response.cardRenderer('Shopping List:', responseString);
-        //            _this.response.speak(response);
-        //            console.log(_this.response);
-
-
-        var response = {
-            "version": "1.0",
-            "response": {
-                "directives": [
-                    {
-                        "type": "Display.RenderTemplate",
-                        "template": {
-                            "type": "BodyTemplate1",
-                            "token": "string",
-                            "backButton": "VISIBLE",
-                            "title": "Title",
-                            "textContent": {
-                                "primaryText": {
-                                    "text": "See my favorite car",
-                                    "type": "PlainText"
-                                },
-                                "secondaryText": {
-                                    "text": "Custom-painted",
-                                    "type": "RichText"
-                                },
-                                "tertiaryText": {
-                                    "text": "By me!",
-                                    "type": "PlainText"
-                                }
-                            }
-                        }
-                    }],
-                "outputSpeech": {
-                    "type": "SSML",
-                    "ssml": "<speak> Take your shopping list </speak>"
-                },
-                "shouldEndSession": true
-            },
-            "sessionAttributes": {
-                "date_slot": "N/A",
-                "event_slot": "N/A",
-                "time_slot": "N/A"
-            }
+    'ElementSelected': function () {
+        let type = this.event.request.token.split('-')[0];
+        if (type === 'shoppingItem') {
+            let item = this.event.request.token.split('-')[1];
+            this.attributes['selected_item'] = item;
+            this.response.speak('would you like to edit or remove ' + item + '?');
+            this.response.listen('would you like to edit or remove ' + item + '?');
+            this.response.shouldEndSession = false;
+            this.emit(':responseReady');
+        } else if (type === 'caretaker') {
+            let caretakerID = this.event.request.token.split('-')[1];
+            message = this.attributes['current_message'];
+            message = message.charAt(0).toUpperCase() + message.slice(1);
+            sendNotification('New Message', message);
+            // delay to ensure notification sends (doesn't have callback)
+            let _this = this;
+            setTimeout(function () {
+                sendMessage(message, caretakerID, function () {
+                    displayMessage(_this, message);
+                });
+            }, 500);
         }
-        console.log(this.response.ResponseBuilder);
-        this.context.succeed(response);
-        //            _this.emit(':responseReady');
-        //        });
+    },
+    'ModifyShoppingItem': function () {
+        let oldItem = this.attributes['selected_item'];
+        let newItem = this.event.request.intent.slots.newItem.value;
+        let _this = this;
+        if (!newItem) {
+            const slotToElicit = 'newItem';
+            const speechOutput = 'what would you like to change it to?';
+            const repromptSpeech = 'what would you like to change it to?';
+            const updatedIntent = 'ModifyShoppingItem';
+            return this.emit(':elicitSlot', slotToElicit, speechOutput, repromptSpeech);
+        } else {
+            changeShoppingItem(oldItem, newItem, function () {
+                displayShoppingList(_this, 'I changed ' + oldItem + ' to ' + newItem);
+            });
+        }
+    },
+    'RemoveShoppingItem': function () {
+        let item = this.attributes['selected_item'];
+        let _this = this;
+        removeShoppingItem(item, function () {
+            displayShoppingList(_this, 'I removed ' + item + ' from your shopping list.');
+        });
+    },
+    'ShowShoppingList': function () {
+        let _this = this;
+        displayShoppingList(this, "Here is your shopping list");
     },
     'GetEvents': function () {
         let _this = this;
@@ -142,7 +135,7 @@ const initialHandlers = {
         var speechText = this.event.request.intent.slots.event.value;
         if (speechText) {
             let date = chrono.parseDate(speechText);
-            if (removeDate(speechText) != '') {
+            if (removeDate(speechText) != '' && this.attributes['event_slot'] == 'N/A') {
                 let event = removeDate(speechText);
                 event = event.replace('for ', '');
                 event = event.replace('to ', '');
@@ -199,32 +192,7 @@ const initialHandlers = {
                 return _this.emit(':responseReady');
             });
 
-            var http = require('http');
-
-            var post_options = {
-                host: 'fcm.googleapis.com',
-                path: '/fcm/send',
-                method: 'POST',
-                'headers': {
-                    'Authorization': 'key=' + 'AAAAYwFKIfU:APA91bFzDV9FFpKuIYVm16e5hUsq1oSDJBMENmI1T93ISv1h-JR4YvpLUnyroYjP0zTuMJ11aU_fVtsKXgpXtF3KGv58X8FwSziSxfBSmgiSoyV9rTdtH4SadiPe0xOPF1ZMxAs_S4KX',
-                    'Content-Type': 'application/json'
-                },
-            }
-            var post_data = JSON.stringify({
-                'notification': {
-                    'title': 'New Request',
-                    'body': 'Barbara requested a ride to ' + event + ' on ' + date + ' at ' + time,
-                    'icon': 'https://2rggqq2i39ev11stft2k5mo0-wpengine.netdna-ssl.com/wp-content/uploads/cigna-square-logo-2-300x300.png',
-                    'click_action': 'http://localhost:8080'
-                },
-                'to': 'fI2-6s8gELk:APA91bG_Wdlgs20ffL50BHFTXIgtJcC5JBpR0Wy_R3x3p12Sv5RaVNr6HLogmYR-DLNIgsPr2VsHprRI4or-IZiaZGGp3ip4r8xO25r2ghRhL2SxgOjISFLgWGN5kvLsG-aVIRbWasSe'
-            })
-            // Set up the request
-            var post_req = http.request(post_options, function (res) {});
-
-            // post the data
-            post_req.write(post_data);
-            post_req.end();
+            sendNotification('New Ride Request', 'Barbara requested a ride to ' + event + ' on ' + date + ' at ' + time)
             recordChange();
         }
     },
@@ -232,16 +200,7 @@ const initialHandlers = {
         recordChange();
         var item = this.event.request.intent.slots.item.value;
         var quantity = this.event.request.intent.slots.quantity.value;
-        if (item) {
-            if (item.split(' ')[0] == 'for') {
-                item = item.replace('for ', '');
-                quantity = 4;
-            }
-            if (item.split(' ')[0] == 'a') {
-                item = item.replace('a ', '');
-                quantity = 1;
-            }
-        }
+
         if (!item) {
             const slotToElicit = 'item'
             const speechOutput = 'Can you repeat what you want to add?'
@@ -249,28 +208,15 @@ const initialHandlers = {
             const updatedIntent = 'AddShoppingItem'
             return this.emit(':elicitSlot', slotToElicit, speechOutput, repromptSpeech)
         }
-        if (!quantity) {
-            const slotToElicit = 'quantity'
-            const speechOutput = 'How many?'
-            const repromptSpeech = 'How many?'
-            const updatedIntent = 'AddShoppingItem'
-            //  return this.emit(':elicitSlot', slotToElicit, speechOutput, repromptSpeech)
-        }
 
-        if (!quantity) quantity = 1;
         var _this = this;
-        addShoppingItem(item, quantity, function (err, data) {
+        addShoppingItem(item, function (err, data) {
             if (!err) {
-                let outputSpeech = 'I added ' + item + ' to your shopping list.';
-                let outputText = 'I added ' + item + ' to your shopping list.';
-                _this.response.cardRenderer("Response", outputText);
-                _this.response.speak(outputSpeech);
-                _this.emit(':responseReady');
+                displayShoppingList(_this, 'I added ' + item + ' to your shopping list.');
             } else
                 _this.emit(':tell', 'There was a problem');
         });
     },
-    'RemoveShoppingItem': function () {},
     'ClearShoppingList': function () {
         var _this = this;
         clearShoppingList(function () {
@@ -290,6 +236,218 @@ const initialHandlers = {
         response.tell(speechOutput);
     }
 };
+
+function sendNotification(title, body) {
+    var http = require('http');
+
+    var post_options = {
+        host: 'fcm.googleapis.com',
+        path: '/fcm/send',
+        method: 'POST',
+        'headers': {
+            'Authorization': 'key=' + 'AAAAYwFKIfU:APA91bFzDV9FFpKuIYVm16e5hUsq1oSDJBMENmI1T93ISv1h-JR4YvpLUnyroYjP0zTuMJ11aU_fVtsKXgpXtF3KGv58X8FwSziSxfBSmgiSoyV9rTdtH4SadiPe0xOPF1ZMxAs_S4KX',
+            'Content-Type': 'application/json'
+        },
+    }
+    var post_data = JSON.stringify({
+        'notification': {
+            'title': title,
+            'body': body,
+            'icon': 'https://2rggqq2i39ev11stft2k5mo0-wpengine.netdna-ssl.com/wp-content/uploads/cigna-square-logo-2-300x300.png',
+            'click_action': 'http://localhost:8080'
+        },
+        'to': 'fI2-6s8gELk:APA91bG_Wdlgs20ffL50BHFTXIgtJcC5JBpR0Wy_R3x3p12Sv5RaVNr6HLogmYR-DLNIgsPr2VsHprRI4or-IZiaZGGp3ip4r8xO25r2ghRhL2SxgOjISFLgWGN5kvLsG-aVIRbWasSe'
+    })
+    // Set up the request
+    var post_req = http.request(post_options, function (res) {});
+
+    // post the data
+    post_req.write(post_data);
+    post_req.end();
+}
+
+function displayMessage(intent, message) {
+    var response = {
+        "version": "1.0",
+        "response": {
+            "directives": [
+                {
+                    "type": "Display.RenderTemplate",
+                    "template": {
+                        "type": "BodyTemplate3",
+                        "token": "string",
+                        "backButton": "VISIBLE",
+                        "image": {
+                            "sources": [{
+                                "url": "http://flaticons.net/icons/Mobile%20Application/Send.png"
+                        }]
+                        },
+                        "title": "Sending...",
+                        "textContent": {
+                            "primaryText": {
+                                "text": message,
+                                "type": "RichText"
+                            },
+                            //                            "secondaryText": {
+                            //                                "text": message,
+                            //                                "type": "PlainText"
+                            //                            },
+                            //                            "tertiaryText": {
+                            //                                "text": message,
+                            //                                "type": "PlainText"
+                            //                            }
+
+                        }
+                    }
+                    }],
+            "outputSpeech": {
+                "type": "SSML",
+                "ssml": "<speak> Sending the message " + message + "</speak>"
+            },
+            "shouldEndSession": true
+        },
+        "sessionAttributes": intent.attributes
+    }
+
+
+    intent.emit('ShowShoppingList');
+    intent.context.succeed(response);
+}
+
+function displayCaretakers(intent, speechText, message) {
+    getCaretakers(function (err, data) {
+        if (data.length > 0) {
+            var response = {
+                "version": "1.0",
+                "response": {
+                    "directives": [
+                        {
+                            "type": "Display.RenderTemplate",
+                            "template": {
+                                "type": "ListTemplate1",
+                                "token": "string",
+                                "backButton": "VISIBLE",
+                                "title": "Who would you like to send this message to?",
+                                "listItems": [
+                                    {
+                                        "token": 'caretaker-' + 0,
+                                        "textContent": {
+                                            "primaryText": {
+                                                "text": 'Everyone',
+                                                "type": "PlainText"
+                                            },
+                                        }
+                                    }
+                                ]
+                            }
+                    }],
+                    "outputSpeech": {
+                        "type": "SSML",
+                        "ssml": "<speak>" + speechText + "</speak>"
+                    },
+                    "shouldEndSession": false
+                },
+                "sessionAttributes": intent.attributes
+            }
+            data.forEach(function (item) {
+                let listItem = {
+                    "token": 'caretaker-' + item.UserID,
+                    "textContent": {
+                        "primaryText": {
+                            "text": item.FirstName + ' ' + item.LastName,
+                            "type": "PlainText"
+                        },
+                        "secondaryText": {
+                            "text": item.Relationship,
+                            "type": "PlainText"
+                        }
+                    }
+                }
+                response.response.directives[0].template.listItems.push(listItem)
+            });
+
+            intent.context.succeed(response);
+        }
+    });
+}
+
+function displayShoppingList(intent, speechText) {
+    getShoppingList(function (err, data) {
+        if (data.length > 0) {
+            var response = {
+                "version": "1.0",
+                "response": {
+                    "directives": [
+                        {
+                            "type": "Display.RenderTemplate",
+                            "template": {
+                                "type": "ListTemplate1",
+                                "token": "string",
+                                "backButton": "VISIBLE",
+                                "title": "Shopping List",
+                                "listItems": [],
+                                //                                "backgroundImage": {
+                                //                                    "contentDescription": "string",
+                                //                                    "sources": [
+                                //                                        {
+                                //                                            "url": "https://www.publicdomainpictures.net/pictures/80000/velka/old-paper-1391971316LSF.jpg",
+                                //                                  },
+                                //
+                                //                                ]
+                                //                                }
+                            }
+                    }],
+                    "outputSpeech": {
+                        "type": "SSML",
+                        "ssml": "<speak>" + speechText + "</speak>"
+                    },
+                    "shouldEndSession": false
+                },
+                "sessionAttributes": intent.attributes
+            }
+
+
+            data.forEach(function (item) {
+                let listItem = {
+                    "token": 'shoppingItem-' + item.item,
+                    "textContent": {
+                        "primaryText": {
+                            "text": item.item,
+                            "type": "PlainText"
+                        }
+                    }
+                }
+                if (item.done) {
+                    listItem["image"] = {
+                        "sources": [{
+                            //"url": "./assets/in_delivery_icon.png"
+                            "url": "http://flaticons.net/icons/Shopping/Add-To-Cart.png"
+                        }]
+                    }
+                    listItem["textContent"]["secondaryText"] = {
+                        "text": "Picked up by " + item.caretakerName,
+                        "type": "RichText"
+                    }
+                } else {
+                    listItem["image"] = {
+                        "sources": [{
+                            //"url": "./assets/in_delivery_icon.png"
+                            "url": "http://www.iconsplace.com/download/white-car-512.png"
+                        }]
+                    }
+                    listItem["textContent"]["tertiaryText"] = {
+                        "text": "In Progress",
+                        "type": "RichText"
+                    }
+                }
+                response.response.directives[0].template.listItems.push(listItem)
+            });
+
+            intent.context.succeed(response);
+        }
+    });
+
+}
 
 function removeDate(string) {
     let parsedResult = chrono.parse(string);
@@ -318,16 +476,50 @@ function getEvents(date, callbackFn) {
     });
 }
 
-function addShoppingItem(item, quantity, callbackFn) {
+function getCaretakers(callbackFn) {
+    let params = {
+        TableName: 'Caretaker'
+    };
+    docClient.scan(params, (err, data) => {
+        callbackFn(err, data.Items);
+    });
+}
+
+function sendMessage(message, caretakerID, callbackFn) {
+    var params = {
+        Key: {
+            MessageID: Date.now().toString()
+        },
+        AttributeUpdates: {
+            timestamp: {
+                Action: 'PUT',
+                Value: Date.now()
+            },
+            CaretakerID: {
+                Action: 'PUT',
+                Value: caretakerID
+            },
+            Message: {
+                Action: 'PUT',
+                Value: message
+            }
+        },
+        TableName: 'Message'
+    }
+    docClient.update(params, function (err, data) {
+        if (typeof (callbackFn) == 'function') {
+            console.log(err);
+            callbackFn(err, data);
+        }
+    });
+}
+
+function addShoppingItem(item, callbackFn) {
     var params = {
         Key: {
             item: item
         },
         AttributeUpdates: {
-            quantity: {
-                Action: 'PUT',
-                Value: quantity
-            },
             timestamp: {
                 Action: 'PUT',
                 Value: Date.now()
@@ -343,10 +535,28 @@ function addShoppingItem(item, quantity, callbackFn) {
     });
 }
 
-function clearShoppingList(callbackFn) {
-
+function removeShoppingItem(item, callbackFn) {
+    var params = {
+        Key: {
+            item: item
+        },
+        TableName: 'Shopping'
+    }
+    docClient.delete(params, function (err, data) {
+        if (typeof (callbackFn) == 'function') {
+            console.log(err);
+            callbackFn(err, data);
+        }
+    });
 }
 
+function changeShoppingItem(oldItem, newItem, callbackFn) {
+    removeShoppingItem(oldItem, function () {
+        addShoppingItem(newItem, function () {
+            callbackFn();
+        })
+    })
+}
 
 function logRideRequest(event, date, time, callbackFn) {
     var params = {
@@ -381,9 +591,6 @@ function logRideRequest(event, date, time, callbackFn) {
     });
 }
 
-function addPrescriptionRequest(prescription, date, time) {
-
-}
 
 function sendEmail(subject, body) {
     var params = {
@@ -397,30 +604,6 @@ function sendEmail(subject, body) {
     });
 }
 
-function addErrand(errand, callbackFn) {
-    var params = {
-        Key: {
-            id: errand
-        },
-        AttributeUpdates: {
-            task: {
-                Action: 'PUT',
-                Value: errand
-            },
-            timestamp: {
-                Action: 'PUT',
-                Value: Date.now()
-            }
-        },
-        TableName: 'Errands'
-    }
-    docClient.update(params, function (err, data) {
-        if (typeof (callbackFn) == 'function') {
-            console.log(err);
-            callbackFn(err, data);
-        }
-    });
-}
 
 function recordChange(callbackFn) {
     var params = {
