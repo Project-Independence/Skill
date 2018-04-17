@@ -40,14 +40,27 @@ const initialHandlers = {
         } else {
             this.attributes['current_message'] = message;
             displayCaretakers(this, 'Who would you like to send this to?');
-            //            message = message.charAt(0).toUpperCase() + message.slice(1);
-            //            sendNotification('New Message', message);
-            //
-            //            // delay to ensure notification sends (doesn't have callback)
-            //            setTimeout(function () {
-            //                displayMessage(_this, message);
-            //            }, 500);
         }
+    },
+    "SelectCaretaker": function () {
+        let caretakerName = this.event.request.intent.slots.caretakerName.value;
+        let _this = this;
+        getCaretakerByName(caretakerName, function (id) {
+            if (id != -1) {
+                let caretakerID = id;
+                message = _this.attributes['current_message'];
+                message = message.charAt(0).toUpperCase() + message.slice(1);
+                sendNotification('New Message', message);
+                // delay to ensure notification sends (doesn't have callback)
+                setTimeout(function () {
+                    sendMessage(message, caretakerID, function () {
+                        displayMessage(_this, message, caretakerName);
+                    });
+                }, 500);
+            } else {
+                displayCaretakers(_this, 'I could not find ' + caretakerName + ', try selecting from the on screen list.')
+            }
+        })
     },
     'ElementSelected': function () {
         let type = this.event.request.token.split('-')[0];
@@ -59,17 +72,20 @@ const initialHandlers = {
             this.response.shouldEndSession = false;
             this.emit(':responseReady');
         } else if (type === 'caretaker') {
-            let caretakerID = this.event.request.token.split('-')[1];
+            let caretakerID = parseInt(this.event.request.token.split('-')[1]);
             message = this.attributes['current_message'];
             message = message.charAt(0).toUpperCase() + message.slice(1);
             sendNotification('New Message', message);
             // delay to ensure notification sends (doesn't have callback)
             let _this = this;
-            setTimeout(function () {
+            getCaretakerName(caretakerID, function (name) {
+                if (caretakerID == 0) {
+                    name = 'Everyone';
+                }
                 sendMessage(message, caretakerID, function () {
-                    displayMessage(_this, message);
+                    displayMessage(_this, message, name);
                 });
-            }, 500);
+            })
         }
     },
     'ModifyShoppingItem': function () {
@@ -85,6 +101,7 @@ const initialHandlers = {
         } else {
             changeShoppingItem(oldItem, newItem, function () {
                 displayShoppingList(_this, 'I changed ' + oldItem + ' to ' + newItem);
+                recordChange();
             });
         }
     },
@@ -93,11 +110,12 @@ const initialHandlers = {
         let _this = this;
         removeShoppingItem(item, function () {
             displayShoppingList(_this, 'I removed ' + item + ' from your shopping list.');
+            recordChange();
         });
     },
     'ShowShoppingList': function () {
         let _this = this;
-        displayShoppingList(this, "Here is your shopping list");
+        displayActivities(this, "Here is your shopping list");
     },
     'GetEvents': function () {
         let _this = this;
@@ -237,6 +255,8 @@ const initialHandlers = {
     }
 };
 
+
+
 function sendNotification(title, body) {
     var http = require('http');
 
@@ -266,7 +286,21 @@ function sendNotification(title, body) {
     post_req.end();
 }
 
-function displayMessage(intent, message) {
+function getCaretakerName(id, callbackFn) {
+    var params = {
+        TableName: 'Caretaker',
+        Key: {
+            UserID: id
+        }
+    };
+
+    docClient.get(params, function (err, data) {
+        if (err) console.log(err);
+        else callbackFn(data.Item.FirstName);
+    });
+}
+
+function displayMessage(intent, message, caretakerName) {
     var response = {
         "version": "1.0",
         "response": {
@@ -282,7 +316,7 @@ function displayMessage(intent, message) {
                                 "url": "http://flaticons.net/icons/Mobile%20Application/Send.png"
                         }]
                         },
-                        "title": "Sending...",
+                        "title": "Sending to " + caretakerName + "...",
                         "textContent": {
                             "primaryText": {
                                 "text": message,
@@ -297,12 +331,21 @@ function displayMessage(intent, message) {
                             //                                "type": "PlainText"
                             //                            }
 
+                        },
+                        "backgroundImage": {
+                            "contentDescription": "string",
+                            "sources": [
+                                {
+                                    "url": "https://images.template.net/wp-content/uploads/2015/04/Patterns-Black-Textures-Grunge.jpg",
+                                                                  },
+
+                                                                ]
                         }
                     }
                     }],
             "outputSpeech": {
                 "type": "SSML",
-                "ssml": "<speak> Sending the message " + message + "</speak>"
+                "ssml": "<speak> Sending the message " + message + " to " + caretakerName + "</speak>"
             },
             "shouldEndSession": true
         },
@@ -314,7 +357,24 @@ function displayMessage(intent, message) {
     intent.context.succeed(response);
 }
 
-function displayCaretakers(intent, speechText, message) {
+function getCaretakerByName(name, callbackFn) {
+    if (name === 'everyone' || name === 'Everyone') {
+        callbackFn(0);
+    } else {
+        let found = false;
+        getCaretakers(function (err, data) {
+            data.forEach(function (caretaker) {
+                if (caretaker.FirstName == name) {
+                    callbackFn(caretaker.UserID);
+                    found = true;
+                }
+            })
+            if (!found) callbackFn(-1);
+        })
+    }
+}
+
+function displayCaretakers(intent, speechText) {
     getCaretakers(function (err, data) {
         if (data.length > 0) {
             var response = {
@@ -338,7 +398,16 @@ function displayCaretakers(intent, speechText, message) {
                                             },
                                         }
                                     }
-                                ]
+                                ],
+                                "backgroundImage": {
+                                    "contentDescription": "string",
+                                    "sources": [
+                                        {
+                                            "url": "https://images.template.net/wp-content/uploads/2015/04/Patterns-Black-Textures-Grunge.jpg",
+                                                                  },
+
+                                                                ]
+                                }
                             }
                     }],
                     "outputSpeech": {
@@ -386,15 +455,15 @@ function displayShoppingList(intent, speechText) {
                                 "backButton": "VISIBLE",
                                 "title": "Shopping List",
                                 "listItems": [],
-                                //                                "backgroundImage": {
-                                //                                    "contentDescription": "string",
-                                //                                    "sources": [
-                                //                                        {
-                                //                                            "url": "https://www.publicdomainpictures.net/pictures/80000/velka/old-paper-1391971316LSF.jpg",
-                                //                                  },
-                                //
-                                //                                ]
-                                //                                }
+                                "backgroundImage": {
+                                    "contentDescription": "string",
+                                    "sources": [
+                                        {
+                                            "url": "https://images.template.net/wp-content/uploads/2015/04/Patterns-Black-Textures-Grunge.jpg",
+                                                                  },
+
+                                                                ]
+                                }
                             }
                     }],
                     "outputSpeech": {
@@ -441,6 +510,124 @@ function displayShoppingList(intent, speechText) {
                     }
                 }
                 response.response.directives[0].template.listItems.push(listItem)
+            });
+
+            intent.context.succeed(response);
+        }
+    });
+
+}
+
+function displayActivities(intent, speechText) {
+    getActivities(function (err, data) {
+        if (data.length > 0) {
+            var response = {
+                "version": "1.0",
+                "response": {
+                    "directives": [
+                        {
+                            "type": "Display.RenderTemplate",
+                            "template": {
+                                "type": "ListTemplate1",
+                                "token": "string",
+                                "backButton": "VISIBLE",
+                                "title": "Notifications",
+                                "listItems": [],
+                                "backgroundImage": {
+                                    "contentDescription": "string",
+                                    "sources": [
+                                        {
+                                            "url": "https://images.template.net/wp-content/uploads/2015/04/Patterns-Black-Textures-Grunge.jpg",
+                                                                  },
+
+                                                                ]
+                                }
+                            }
+                    }],
+                    "outputSpeech": {
+                        "type": "SSML",
+                        "ssml": "<speak>" + 'here are your notifications' + "</speak>"
+                    },
+                    "shouldEndSession": false
+                },
+                "sessionAttributes": intent.attributes
+            }
+
+
+            data.forEach(function (item) {
+                if (item.data.type == 'shopping-pickup') {
+                    let listItem = {
+                        "token": '',
+                        "textContent": {
+                            "primaryText": {
+                                "text": item.data.name,
+                                "type": "PlainText"
+                            }
+                        }
+                    }
+                    listItem["image"] = {
+                        "sources": [{
+                            //"url": "./assets/in_delivery_icon.png"
+                            "url": "http://flaticons.net/icons/Shopping/Add-To-Cart.png"
+                        }]
+                    }
+                    listItem["textContent"]["secondaryText"] = {
+                        "text": 'Picked Up',
+                        "type": "RichText"
+                    }
+                    listItem["textContent"]["tertiaryText"] = {
+                        "text": item.data.CaretakerName,
+                        "type": "RichText"
+                    }
+                    response.response.directives[0].template.listItems.push(listItem)
+                } else if (item.data.type == 'ride-claim') {
+                    let listItem = {
+                        "token": '',
+                        "textContent": {
+                            "primaryText": {
+                                "text": item.data.name,
+                                "type": "PlainText"
+                            },
+                            "secondaryText": {
+                                "text": 'Ride claimed by ' + item.data.CaretakerName,
+                                "type": "PlainText"
+                            },
+                            "tertiaryText": {
+                                "text": item.data.pickupTime,
+                                "type": "PlainText"
+                            },
+                        }
+                    }
+                    listItem["image"] = {
+                        "sources": [{
+                            //"url": "./assets/in_delivery_icon.png"
+                            "url": "http://turnerautocare.com/images/icon_7893_white.png"
+                        }]
+                    }
+                    response.response.directives[0].template.listItems.push(listItem)
+
+                } else if (item.data.type == 'ride-unclaim') {
+                    let listItem = {
+                        "token": '',
+                        "textContent": {
+                            "primaryText": {
+                                "text": "Ride Cancel",
+                                "type": "PlainText"
+                            },
+                            "secondaryText": {
+                                "text": "Ride: " + item.data.name,
+                                "type": "PlainText"
+                            },
+                        }
+                    }
+                    listItem["image"] = {
+                        "sources": [{
+                            //"url": "./assets/in_delivery_icon.png"
+                            "url": "http://turnerautocare.com/images/icon_7893_white.png"
+                        }]
+                    }
+                    response.response.directives[0].template.listItems.push(listItem)
+                }
             });
 
             intent.context.succeed(response);
@@ -505,6 +692,38 @@ function sendMessage(message, caretakerID, callbackFn) {
             }
         },
         TableName: 'Message'
+    }
+    docClient.update(params, function (err, data) {
+        if (typeof (callbackFn) == 'function') {
+            console.log(err);
+            recordChange();
+            logActivity(message, function () {
+                callbackFn(err, data);
+            })
+        }
+    });
+}
+
+function logActivity(content, callbackFn) {
+    var params = {
+        Key: {
+            ActivityID: Date.now()
+        },
+        AttributeUpdates: {
+            data: {
+                Action: 'PUT',
+                Value: content
+            },
+            timestamp: {
+                Action: 'PUT',
+                Value: Date.now()
+            },
+            type: {
+                Action: 'PUT',
+                Value: 'message'
+            }
+        },
+        TableName: 'Activity'
     }
     docClient.update(params, function (err, data) {
         if (typeof (callbackFn) == 'function') {
@@ -645,6 +864,29 @@ function getShoppingList(callbackFn) {
                 return 0;
             });
             callbackFn(err, shoppingList);
+        }
+    });
+}
+
+function getActivities(callbackFn) {
+    var params = {
+        TableName: 'Activity'
+    }
+    docClient.scan(params, function (err, data) {
+        if (typeof (callbackFn) == 'function') {
+            console.log(err);
+            var activityList = [];
+            data.Items.forEach((item) => {
+                activityList.push(item);
+            });
+            activityList.sort(function (a, b) {
+                var keyA = a.timestamp,
+                    keyB = b.timestamp;
+                if (keyA < keyB) return 1;
+                if (keyA > keyB) return -1;
+                return 0;
+            });
+            callbackFn(err, activityList);
         }
     });
 }
