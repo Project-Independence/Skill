@@ -112,8 +112,8 @@ const initialHandlers = {
             let caretakerName = fields[2];
             let message = fields[3];
             //this.attributes['current_message_caretakerID'] = fields[2
-            this.response.speak(caretakerName + ' sent you, ' + message + '. If you would like to message back, say reply');
-            this.response.listen('If you would like to message back, say reply');
+            this.response.speak(caretakerName + ' sent you, ' + message + '. If you would like to message back, say reply to message');
+            this.response.listen('If you would like to message back, say reply to message');
             this.response.shouldEndSession = false;
             this.emit(':responseReady');
         }
@@ -233,8 +233,8 @@ const initialHandlers = {
             return this.emit(':elicitSlot', slotToElicit, speechOutput, repromptSpeech);
         } else {
             let event = this.attributes['event_slot'];
-            let date = this.attributes['date_slot'];
-            let time = this.attributes['time_slot'];
+            let date = new Date(this.attributes['date_slot']);
+            let time = new Date(this.attributes['time_slot']);
 
             let rideText = event + ' ' + date.toLocaleDateString() + ' at ' + time.toLocaleTimeString([], {
                 hour: '2-digit',
@@ -1020,10 +1020,18 @@ function changeShoppingItem(oldItem, newItem, callbackFn) {
     })
 }
 
+function cap(str) {
+    str = str.replace(/\b[a-z]/g, function (letter) {
+        return letter.toUpperCase();
+    });
+    str = str.replace(/'(S)/g, function (letter) {
+        return letter.toLowerCase();
+    });
+    return str;
+}
+
 function logRideRequest(event, date, time, callbackFn) {
-    event = event.replace(/\b\w/g, function (l) {
-        return l.toUpperCase()
-    })
+    event = cap(event);
     var params = {
         Key: {
             id: date.toLocaleDateString() + time.toLocaleTimeString([], {
