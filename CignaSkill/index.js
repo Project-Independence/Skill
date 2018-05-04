@@ -10,11 +10,7 @@ const states = {
     PROMPT: '_PROMPT'
 };
 
-const names = ['Lucas', 'Hamza', 'Jd', 'Bing'];
-
-// if thing is in list, add to quantity
-// make removing
-
+// init persistence table for data to persist between sessions
 exports.handler = function (event, context, callback) {
     var alexa = Alexa.handler(event, context);
     alexa.registerHandlers(initialHandlers);
@@ -24,10 +20,14 @@ exports.handler = function (event, context, callback) {
 
 var currentEventKey = '';
 
+
+// INTENT HANDLERS -- see AWS portal to see definitions and descriptions 
 const initialHandlers = {
+    // handler activated on launch (we dont use this)
     'LaunchRequest': function () {
         this.emit(':ask', 'Hi!');
     },
+    // messag sending handler
     'SendMessage': function () {
         var message = this.event.request.intent.slots.message.value;
         var _this = this;
@@ -44,7 +44,6 @@ const initialHandlers = {
                 message = this.attributes['current_message'];
                 message = message.charAt(0).toUpperCase() + message.slice(1);
                 sendNotification('New Message', [caretakerID], message);
-                // delay to ensure notification sends (doesn't have callback)
                 getCaretakerName(caretakerID, function (name) {
                     if (caretakerID == 0) {
                         name = 'Everyone';
@@ -59,6 +58,7 @@ const initialHandlers = {
             }
         }
     },
+    // passed caretaker name to send message to
     "SelectCaretaker": function () {
         let caretakerName = this.event.request.intent.slots.caretakerName.value;
         let _this = this;
@@ -79,6 +79,7 @@ const initialHandlers = {
             }
         })
     },
+    // selection handler for lists
     'ElementSelected': function () {
         let type = this.event.request.token.split('-')[0];
         if (type === 'shoppingItem') {
@@ -94,7 +95,6 @@ const initialHandlers = {
             message = this.attributes['current_message'];
             message = message.charAt(0).toUpperCase() + message.slice(1);
             sendNotification('New Message', [caretakerID], message);
-            // delay to ensure notification sends (doesn't have callback)
             let _this = this;
             getCaretakerName(caretakerID, function (name) {
                 if (caretakerID == 0) {
@@ -111,7 +111,6 @@ const initialHandlers = {
             this.attributes['reply_id'] = caretakerID;
             let caretakerName = fields[2];
             let message = fields[3];
-            //this.attributes['current_message_caretakerID'] = fields[2
             this.response.speak(caretakerName + ' sent you, ' + message + '. If you would like to message back, say reply to message');
             this.response.listen('If you would like to message back, say reply to message');
             this.response.shouldEndSession = false;
@@ -144,6 +143,7 @@ const initialHandlers = {
             this.emit(':responseReady');
         }
     },
+    // change shopping item text
     'ModifyShoppingItem': function () {
         let oldItem = this.attributes['selected_item'];
         let newItem = this.event.request.intent.slots.newItem.value;
@@ -161,6 +161,7 @@ const initialHandlers = {
             });
         }
     },
+    // delete shopping item
     'RemoveShoppingItem': function () {
         let item = this.attributes['selected_item'];
         let _this = this;
@@ -169,14 +170,17 @@ const initialHandlers = {
             recordChange();
         });
     },
+    // display all shopping items
     'ShowShoppingList': function () {
         let _this = this;
         displayShoppingList(this, "Here is your shopping list");
     },
+    // get and display notifications
     'GetNotifications': function () {
         let _this = this;
         displayActivities(this, "Here is your shopping list");
     },
+    // get and display events (rides)
     'GetEvents': function () {
         let _this = this;
         getEvents(function (err, data) {
@@ -189,6 +193,7 @@ const initialHandlers = {
             }
         })
     },
+    // parse text for date / time / event and request ride
     'RequestRide': function () {
         var speechText = this.event.request.intent.slots.event.value;
         if (speechText) {
@@ -261,6 +266,7 @@ const initialHandlers = {
             recordChange();
         }
     },
+    // add shopping item
     'AddShoppingItem': function () {
         recordChange();
         var item = this.event.request.intent.slots.item.value;
@@ -283,26 +289,24 @@ const initialHandlers = {
                 _this.emit(':tell', 'There was a problem');
         });
     },
-    'ClearShoppingList': function () {
-        var _this = this;
-        clearShoppingList(function () {
-            _this.emit(':tell', 'Ok, I cleared it!');
-        })
-    },
-    'PutCalendarEvent': function () {},
-    'DeleteCalendarEvent': function () {},
+    // skill unsure which intent you meant 
     'UnclearIntent': function () {
         this.emit(':ask', '');
     },
+    // intent not handled in current state
     'Unhandled': function () {
         this.emit(':ask', '');
     },
+    // "stop" "cancel" etc
     "AMAZON.StopIntent": function (intent, session, response) {
         var speechOutput = "Goodbye";
         response.tell(speechOutput);
     }
 };
 
+// HELPER FUNCTIONS
+
+// displayer upcoming events
 function displayEvents(intent, speechText) {
     getEvents(function (err, data) {
         if (data.length > 0) {
@@ -384,6 +388,7 @@ function displayEvents(intent, speechText) {
     });
 }
 
+// send notification to caretaker
 function sendNotification(title, ids, body) {
     console.log(ids);
     getTokens(ids, function (tokens) {
@@ -419,6 +424,7 @@ function sendNotification(title, ids, body) {
     });
 }
 
+// get firebase tokens for notifications
 function getTokens(idArray, callbackFn) {
     let tokens = [];
     getCaretakers(function (err, data) {
@@ -431,7 +437,7 @@ function getTokens(idArray, callbackFn) {
     });
 }
 
-
+// get name of caretaker by id
 function getCaretakerName(id, callbackFn) {
     var params = {
         TableName: 'Caretaker',
@@ -446,6 +452,7 @@ function getCaretakerName(id, callbackFn) {
     });
 }
 
+// display ride info on show
 function displayRide(intent, event, date, time) {
     var response = {
         "version": "1.0",
@@ -503,6 +510,7 @@ function displayRide(intent, event, date, time) {
     intent.context.succeed(response);
 }
 
+// display message on show
 function displayMessage(intent, message, caretakerName) {
     var response = {
         "version": "1.0",
@@ -560,6 +568,8 @@ function displayMessage(intent, message, caretakerName) {
     intent.context.succeed(response);
 }
 
+
+// get caretaker object by name
 function getCaretakerByName(name, callbackFn) {
     if (name === 'everyone' || name === 'Everyone') {
         callbackFn(0);
@@ -577,6 +587,7 @@ function getCaretakerByName(name, callbackFn) {
     }
 }
 
+// display all caretakers on show
 function displayCaretakers(intent, speechText) {
     getCaretakers(function (err, data) {
         if (data.length > 0) {
@@ -643,6 +654,7 @@ function displayCaretakers(intent, speechText) {
     });
 }
 
+// display shopping list on show
 function displayShoppingList(intent, speechText) {
     getShoppingList(function (err, data) {
         if (data.length > 0) {
@@ -721,6 +733,7 @@ function displayShoppingList(intent, speechText) {
 
 }
 
+// display activities on show
 function displayActivities(intent, speechText) {
     getActivities(function (err, data) {
         if (data.length > 0) {
@@ -872,6 +885,7 @@ function displayActivities(intent, speechText) {
 
 }
 
+// remove a date from a string 
 function removeDate(string) {
     let parsedResult = chrono.parse(string);
     parsedResult.forEach(function (result) {
@@ -883,6 +897,7 @@ function removeDate(string) {
     return string;
 }
 
+// get all events (rides)
 function getEvents(callbackFn) {
     let params = {
         TableName: 'Rides'
@@ -905,6 +920,7 @@ function getEvents(callbackFn) {
     });
 }
 
+// get all caretakers from database
 function getCaretakers(callbackFn) {
     let params = {
         TableName: 'Caretaker'
@@ -914,6 +930,7 @@ function getCaretakers(callbackFn) {
     });
 }
 
+// send message
 function sendMessage(message, caretakerID, callbackFn) {
     var params = {
         Key: {
@@ -947,6 +964,7 @@ function sendMessage(message, caretakerID, callbackFn) {
     });
 }
 
+// log an activity in the database
 function logActivity(content, callbackFn) {
     var params = {
         Key: {
@@ -976,6 +994,7 @@ function logActivity(content, callbackFn) {
     });
 }
 
+// add item info to database
 function addShoppingItem(item, callbackFn) {
     var params = {
         Key: {
@@ -997,6 +1016,7 @@ function addShoppingItem(item, callbackFn) {
     });
 }
 
+// delete item info from database
 function removeShoppingItem(item, callbackFn) {
     var params = {
         Key: {
@@ -1012,6 +1032,7 @@ function removeShoppingItem(item, callbackFn) {
     });
 }
 
+// edit shopping item
 function changeShoppingItem(oldItem, newItem, callbackFn) {
     removeShoppingItem(oldItem, function () {
         addShoppingItem(newItem, function () {
@@ -1020,6 +1041,8 @@ function changeShoppingItem(oldItem, newItem, callbackFn) {
     })
 }
 
+
+// cap first letter in a sentenc
 function cap(str) {
     str = str.replace(/\b[a-z]/g, function (letter) {
         return letter.toUpperCase();
@@ -1030,6 +1053,8 @@ function cap(str) {
     return str;
 }
 
+
+// log ride rqeuest to database
 function logRideRequest(event, date, time, callbackFn) {
     event = cap(event);
     var params = {
@@ -1075,19 +1100,7 @@ function logRideRequest(event, date, time, callbackFn) {
 }
 
 
-function sendEmail(subject, body) {
-    var params = {
-        Message: body,
-        Subject: subject,
-        TopicArn: 'arn:aws:sns:us-east-1:112632085303:CaretakerPortal'
-    };
-    sns.publish(params, function (err, data) {
-        if (err) console.log(err, err.stack); // an error occurred
-        else console.log(data); // successful response
-    });
-}
-
-
+// record change in database (for UI purposes)
 function recordChange(callbackFn) {
     var params = {
         Key: {
@@ -1109,6 +1122,8 @@ function recordChange(callbackFn) {
     });
 }
 
+
+// get shopping list from database
 function getShoppingList(callbackFn) {
     var params = {
         TableName: 'Shopping'
@@ -1132,6 +1147,8 @@ function getShoppingList(callbackFn) {
     });
 }
 
+
+// get activitites from database
 function getActivities(callbackFn) {
     var params = {
         TableName: 'Activity'
@@ -1162,6 +1179,7 @@ function getActivities(callbackFn) {
     });
 }
 
+// get messages from database
 function getMessages(callbackFn) {
     var params = {
         TableName: 'Message'
